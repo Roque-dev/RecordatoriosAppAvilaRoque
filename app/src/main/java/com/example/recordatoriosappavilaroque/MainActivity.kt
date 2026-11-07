@@ -8,20 +8,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.example.recordatoriosappavilaroque.data.InMemoryReminderRepository
-import com.example.recordatoriosappavilaroque.data.ReminderRepository
+import com.example.recordatoriosappavilaroque.data.*
 import com.example.recordatoriosappavilaroque.ui.CreateScreen
 import com.example.recordatoriosappavilaroque.ui.DetailScreen
 import com.example.recordatoriosappavilaroque.ui.ListScreen
 import com.example.recordatoriosappavilaroque.ui.theme.RecordatoriosAppAvilaRoqueTheme
 import com.example.recordatoriosappavilaroque.viewmodel.CreateViewModel
 import com.example.recordatoriosappavilaroque.viewmodel.ListViewModel
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,9 +40,18 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
+    val context = LocalContext.current
 
-    // Instanciamos el repositorio en memoria una sola vez
-    val repository: ReminderRepository = InMemoryReminderRepository()
+    // 1. Inicializar la Base de Datos (Room)
+    val database = AppDatabase.getDatabase(context)
+    val dao = database.reminderDao()
+
+    // 2. Inicializar Retrofit (Internet)
+    val apiService = RetrofitClient.apiService
+
+    // 3. Inicializar los Repositorios
+    val reminderRepository = OfflineReminderRepository(dao, apiService)
+    val preferencesRepository = PreferencesRepository(context)
 
     NavHost(navController = navController, startDestination = "list") {
 
@@ -50,22 +61,17 @@ fun AppNavigation() {
                 factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                     override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
                         @Suppress("UNCHECKED_CAST")
-                        return ListViewModel(repository) as T
+                        return ListViewModel(reminderRepository, preferencesRepository) as T
                     }
                 }
             )
             val uiState by viewModel.uiState.collectAsState()
 
-            // Solucion error de que no guarda: Recarga los datos cada vez que volvés a esta pantalla
-            androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                viewModel.loadReminders()
-            }
-
             ListScreen(
                 uiState = uiState,
                 onReminderClick = { id -> navController.navigate("detail/$id") },
                 onCreateClick = { navController.navigate("create") },
-                onRetry = { viewModel.loadReminders() }
+                onRetry = { viewModel.syncData() } // El botón de reintentar ahora sincroniza con internet
             )
         }
 
@@ -75,13 +81,12 @@ fun AppNavigation() {
                 factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                     override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
                         @Suppress("UNCHECKED_CAST")
-                        return CreateViewModel(repository) as T
+                        return CreateViewModel(reminderRepository) as T
                     }
                 }
             )
             val uiState by viewModel.uiState.collectAsState()
 
-            // Si el guardado es exitoso, volvemos al listado automáticamente
             LaunchedEffect(uiState.saveSuccess) {
                 if (uiState.saveSuccess) {
                     navController.popBackStack()
@@ -105,7 +110,12 @@ fun AppNavigation() {
             arguments = listOf(navArgument("reminderId") { type = NavType.IntType })
         ) { backStackEntry ->
             val id = backStackEntry.arguments?.getInt("reminderId") ?: 0
-            val reminder = (repository as InMemoryReminderRepository).getRemindersSync().find { it.id == id }
+            // Nota: Lo ideal sería un DetailViewModel, pero para simplificar uso el repo
+            var reminder by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Reminder?>(null) }
+
+            LaunchedEffect(id) {
+                reminder = reminderRepository.getReminderById(id)
+            }
 
             DetailScreen(
                 reminder = reminder,

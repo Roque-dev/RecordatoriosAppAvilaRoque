@@ -4,12 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.recordatoriosappavilaroque.data.Reminder
 import com.example.recordatoriosappavilaroque.data.ReminderRepository
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import com.example.recordatoriosappavilaroque.data.PreferencesRepository
+import com.example.recordatoriosappavilaroque.data.SortOrder
+import com.example.recordatoriosappavilaroque.data.ReminderStatus
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-// Consigna 3: UiState mutuamente excluyente con sealed interface
 sealed interface ListUiState {
     object Loading : ListUiState
     object Empty : ListUiState
@@ -17,34 +17,51 @@ sealed interface ListUiState {
     data class Error(val message: String) : ListUiState
 }
 
-class ListViewModel(private val repository: ReminderRepository) : ViewModel() {
+class ListViewModel(
+    private val repository: ReminderRepository,
+    private val preferencesRepository: PreferencesRepository
+) : ViewModel() {
 
-    // Consigna 4: MutableStateFlow privado, StateFlow público de solo lectura
-    private val _uiState = MutableStateFlow<ListUiState>(ListUiState.Loading)
-    val uiState: StateFlow<ListUiState> = _uiState.asStateFlow()
+    private val _isSyncing = MutableStateFlow(false)
+    val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
-    init {
-        loadReminders()
-    }
-
-    fun loadReminders() {
-        viewModelScope.launch {
-            _uiState.value = ListUiState.Loading
-            try {
-                val data = repository.getReminders()
-                if (data.isEmpty()) {
-                    _uiState.value = ListUiState.Empty
-                } else {
-                    _uiState.value = ListUiState.Success(data)
-                }
-            } catch (e: Exception) {
-                _uiState.value = ListUiState.Error("Error al cargar los recordatorios.")
-            }
+    // Combino los datos de Room con las preferencias (orden y filtro)
+    val uiState: StateFlow<ListUiState> = combine(
+        repository.getReminders(),
+        preferencesRepository.userPreferencesFlow
+    ) { reminders, prefs ->
+        // Filtro según preferencias
+        var filtered = if (prefs.showCompleted) {
+            reminders
+        } else {
+            reminders.filter { it.status != ReminderStatus.COMPLETADO }
         }
-    }
 
-    // Función extra para simular el error y poder sacar la captura para el TP
-    fun simulateError() {
-        _uiState.value = ListUiState.Error("Fallo de red simulado. Presione reintentar.")
+        // Ordeno según preferencias
+        filtered = when (prefs.sortOrder) {
+            SortOrder.BY_DATE -> filtered.sortedByDescending { it.date }
+            SortOrder.BY_PRIORITY -> filtered.sortedBy { it.priority.ordinal }
+        }
+
+        if (filtered.isEmpty()) {
+            ListUiState.Empty as ListUiState
+        } else {
+            ListUiState.Success(filtered) as ListUiState
+        }
+    }.catch { e ->
+        emit(ListUiState.Error("Error al leer la base de datos: ${e.message}"))
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = ListUiState.Loading
+    )
+
+    fun syncData() {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            val result = repository.syncWithRemote()
+            _isSyncing.value = false
+
+        }
     }
 }

@@ -20,7 +20,6 @@ data class CreateUiState(
     val saveSuccess: Boolean = false,
     val generalError: String? = null
 ) {
-    // Consigna 2: Reglas de validación
     val isFormValid: Boolean
         get() = title.trim().length >= 4 &&
                 description.length <= 200 &&
@@ -34,29 +33,18 @@ class CreateViewModel(private val repository: ReminderRepository) : ViewModel() 
 
     fun onTitleChange(title: String) {
         _uiState.update {
-            it.copy(
-                title = title,
-                titleError = if (title.trim().length in 1..3) "Mínimo 4 caracteres" else null
-            )
+            it.copy(title = title, titleError = if (title.trim().length in 1..3) "Mínimo 4 caracteres" else null)
         }
     }
 
     fun onDescriptionChange(desc: String) {
         _uiState.update {
-            it.copy(
-                description = desc,
-                descriptionError = if (desc.length > 200) "Máximo 200 caracteres" else null
-            )
+            it.copy(description = desc, descriptionError = if (desc.length > 200) "Máximo 200 caracteres" else null)
         }
     }
 
-    fun onCategorySelect(category: Category) {
-        _uiState.update { it.copy(category = category) }
-    }
-
-    fun onPrioritySelect(priority: Priority) {
-        _uiState.update { it.copy(priority = priority) }
-    }
+    fun onCategorySelect(category: Category) { _uiState.update { it.copy(category = category) } }
+    fun onPrioritySelect(priority: Priority) { _uiState.update { it.copy(priority = priority) } }
 
     fun saveReminder() {
         val currentState = _uiState.value
@@ -65,9 +53,9 @@ class CreateViewModel(private val repository: ReminderRepository) : ViewModel() 
         viewModelScope.launch {
             _uiState.update { it.copy(isSubmitting = true, generalError = null) }
             try {
+                // Guardo usando el repositorio (que guarda en Room)
                 repository.saveReminder(
                     Reminder(
-                        id = 0,
                         title = currentState.title.trim(),
                         description = currentState.description,
                         category = currentState.category!!,
@@ -77,7 +65,7 @@ class CreateViewModel(private val repository: ReminderRepository) : ViewModel() 
                 )
                 _uiState.update { it.copy(isSubmitting = false, saveSuccess = true) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isSubmitting = false, generalError = "No se pudo guardar.") }
+                _uiState.update { it.copy(isSubmitting = false, generalError = "Error al guardar en la base de datos.") }
             }
         }
     }
