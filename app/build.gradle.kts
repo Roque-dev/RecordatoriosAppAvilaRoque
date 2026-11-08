@@ -10,7 +10,15 @@ android {
     compileSdk {
         version = release(37)
     }
-
+    signingConfigs {
+        create("release") {
+            // Ojo aca: el "../key/" es porque el build.gradle está dentro de la carpeta "app"
+            storeFile = file("../key/mi_llave.jks")
+            storePassword = "123456"
+            keyAlias = "roque"
+            keyPassword = "123456"
+        }
+    }
     defaultConfig {
         applicationId = "com.example.recordatoriosappavilaroque"
         minSdk = 24
@@ -26,6 +34,7 @@ android {
             optimization {
                 enable = false
                 packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
+                signingConfig = signingConfigs.getByName("release")
             }
         }
     }
