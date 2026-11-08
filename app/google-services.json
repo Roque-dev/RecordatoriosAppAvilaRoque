@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "731321993638",
+    "project_id": "recordatoriosavilaroque",
+    "storage_bucket": "recordatoriosavilaroque.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:731321993638:android:a2b479eb28333ed9a7a767",
+        "android_client_info": {
+          "package_name": "com.example.recordatoriosappavilaroque"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDyskYNeobNJomjBGHYO2tOivTHwMVnwOw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
