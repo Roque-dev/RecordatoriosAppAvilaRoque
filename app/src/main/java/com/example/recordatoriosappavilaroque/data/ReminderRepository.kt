@@ -12,4 +12,7 @@ interface ReminderRepository {
 
     // Función para forzar la sincronización (la llama desde la UI)
     suspend fun syncWithRemote(): Result<Unit>
+
+    // Función para limpiar los datos del usuario
+    suspend fun clearLocalData()
 }

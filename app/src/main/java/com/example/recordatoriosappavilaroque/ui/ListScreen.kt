@@ -7,14 +7,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,39 +22,66 @@ fun ListScreen(
     uiState: ListUiState,
     onReminderClick: (Int) -> Unit,
     onCreateClick: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onLogout: () -> Unit
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Mis Recordatorios") })
+            CenterAlignedTopAppBar(
+                title = { Text("Mis Recordatorios", style = MaterialTheme.typography.titleLarge) },
+                actions = {
+                    IconButton(onClick = onLogout) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                            contentDescription = "Cerrar Sesión",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onCreateClick) {
+            FloatingActionButton(
+                onClick = onCreateClick,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ) {
                 Icon(imageVector = Icons.Filled.Add, contentDescription = "Crear recordatorio")
             }
         }
     ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding)) {
-            when (val state = uiState) {
-                is ListUiState.Loading -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                }
-                is ListUiState.Empty -> {
-                    EmptyState(onCreate = onCreateClick)
-                }
-                is ListUiState.Error -> {
-                    ErrorState(message = state.message, onRetry = onRetry)
-                }
-                is ListUiState.Success -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp)
-                    ) {
-                        items(state.reminders) { reminder ->
-                            ReminderCard(
-                                reminder = reminder,
-                                onClick = { onReminderClick(reminder.id) }
-                            )
+        Surface(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                when (val state = uiState) {
+                    is ListUiState.Loading -> {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    }
+                    is ListUiState.Empty -> {
+                        EmptyState(onCreate = onCreateClick)
+                    }
+                    is ListUiState.Error -> {
+                        ErrorState(message = state.message, onRetry = onRetry)
+                    }
+                    is ListUiState.Success -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(16.dp)
+                        ) {
+                            items(state.reminders) { reminder ->
+                                ReminderCard(
+                                    reminder = reminder,
+                                    onClick = { onReminderClick(reminder.id) }
+                                )
+                            }
                         }
                     }
                 }

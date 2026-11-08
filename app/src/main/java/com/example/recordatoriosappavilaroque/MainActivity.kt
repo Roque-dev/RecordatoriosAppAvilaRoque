@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -17,13 +18,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.recordatoriosappavilaroque.data.*
-import com.example.recordatoriosappavilaroque.ui.CreateScreen
-import com.example.recordatoriosappavilaroque.ui.DetailScreen
-import com.example.recordatoriosappavilaroque.ui.ListScreen
+import com.example.recordatoriosappavilaroque.ui.*
 import com.example.recordatoriosappavilaroque.ui.theme.RecordatoriosAppAvilaRoqueTheme
-import com.example.recordatoriosappavilaroque.viewmodel.CreateViewModel
-import com.example.recordatoriosappavilaroque.viewmodel.ListViewModel
-
+import com.example.recordatoriosappavilaroque.viewmodel.*
+import com.google.firebase.firestore.FirebaseFirestore
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,18 +40,56 @@ fun AppNavigation() {
     val navController = rememberNavController()
     val context = LocalContext.current
 
-    // 1. Inicializar la Base de Datos (Room)
+    // 1. PRIMERO inicializar el AuthRepository
+    val authRepository = remember { AuthRepository() }
+
+    // 2. Luego la Base de datos (Room) y Preferencias
     val database = AppDatabase.getDatabase(context)
     val dao = database.reminderDao()
-
-    // 2. Inicializar Retrofit (Internet)
-    val apiService = RetrofitClient.apiService
-
-    // 3. Inicializar los Repositorios
-    val reminderRepository = OfflineReminderRepository(dao, apiService)
     val preferencesRepository = PreferencesRepository(context)
 
-    NavHost(navController = navController, startDestination = "list") {
+    // 3. Crea el Repositorio principal que depende de los anteriores
+    val reminderRepository = remember {
+        OfflineReminderRepository(
+            dao = dao,
+            auth = authRepository.auth,
+            firestore = FirebaseFirestore.getInstance()
+        )
+    }
+
+    // Determinar si el usuario ya estaba logueado al abrir la app
+    val startDestination = if (authRepository.currentUser != null) "list" else "auth"
+
+    NavHost(navController = navController, startDestination = startDestination) {
+
+        // PANTALLA DE LOGIN / REGISTRO
+        composable("auth") {
+            val viewModel: AuthViewModel = viewModel(
+                factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+                    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                        @Suppress("UNCHECKED_CAST")
+                        return AuthViewModel(authRepository) as T
+                    }
+                }
+            )
+            val uiState by viewModel.uiState.collectAsState()
+
+            LaunchedEffect(uiState.isSuccess) {
+                if (uiState.isSuccess) {
+                    navController.navigate("list") {
+                        popUpTo("auth") { inclusive = true }
+                    }
+                }
+            }
+
+            AuthScreen(
+                uiState = uiState,
+                onEmailChange = viewModel::onEmailChange,
+                onPasswordChange = viewModel::onPasswordChange,
+                onAuthenticate = { viewModel.authenticate() },
+                onToggleMode = viewModel::toggleMode
+            )
+        }
 
         // PANTALLA 1: LISTADO
         composable("list") {
@@ -61,7 +97,7 @@ fun AppNavigation() {
                 factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                     override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
                         @Suppress("UNCHECKED_CAST")
-                        return ListViewModel(reminderRepository, preferencesRepository) as T
+                        return ListViewModel(reminderRepository, preferencesRepository, authRepository) as T
                     }
                 }
             )
@@ -71,7 +107,14 @@ fun AppNavigation() {
                 uiState = uiState,
                 onReminderClick = { id -> navController.navigate("detail/$id") },
                 onCreateClick = { navController.navigate("create") },
-                onRetry = { viewModel.syncData() } // El botón de reintentar ahora sincroniza con internet
+                onRetry = { viewModel.syncData() },
+                onLogout = {
+                    viewModel.logout {
+                        navController.navigate("auth") {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                }
             )
         }
 
@@ -110,8 +153,7 @@ fun AppNavigation() {
             arguments = listOf(navArgument("reminderId") { type = NavType.IntType })
         ) { backStackEntry ->
             val id = backStackEntry.arguments?.getInt("reminderId") ?: 0
-            // Nota: Lo ideal sería un DetailViewModel, pero para simplificar uso el repo
-            var reminder by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Reminder?>(null) }
+            var reminder by remember { androidx.compose.runtime.mutableStateOf<Reminder?>(null) }
 
             LaunchedEffect(id) {
                 reminder = reminderRepository.getReminderById(id)

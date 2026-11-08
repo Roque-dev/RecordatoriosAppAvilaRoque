@@ -1,18 +1,20 @@
 package com.example.recordatoriosappavilaroque.data
 
 import android.util.Log
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
-import java.io.IOException
 
 class OfflineReminderRepository(
     private val dao: ReminderDao,
-    private val apiService: ReminderApiService
+    private val auth: FirebaseAuth,
+    private val firestore: FirebaseFirestore
 ) : ReminderRepository {
 
-    // 1. LEER: Siempre se lee de Room. La UI es feliz y funciona offline.
     override fun getReminders(): Flow<List<Reminder>> {
         return dao.getAllReminders().map { entities ->
             entities.map { it.toDomain() }
@@ -23,13 +25,12 @@ class OfflineReminderRepository(
         dao.getReminderById(id)?.toDomain()
     }
 
-    // 2. GUARDAR: Guardo primero en Room (Local-First).
     override suspend fun saveReminder(reminder: Reminder): Long = withContext(Dispatchers.IO) {
-        // Lo guardamos como PENDING por si se corta internet
+        // Guarda como PENDING (Local-First)
         val entity = reminder.copy(syncStatus = SyncStatus.PENDING).toEntity()
         val id = dao.insertReminder(entity)
 
-        // Intenta sincronizar inmediatamente en segundo plano (si hay red)
+        // Intenta sincronizar con Firebase en segundo plano
         syncWithRemote()
 
         return@withContext id
@@ -37,46 +38,61 @@ class OfflineReminderRepository(
 
     override suspend fun deleteReminder(reminder: Reminder) = withContext(Dispatchers.IO) {
         dao.deleteReminder(reminder.toEntity())
-        // Nota mia: En una app real, aca también avisaría al servidor que lo borre.
     }
 
-    // 3. SINCRONIZAR: La función más importante
     override suspend fun syncWithRemote(): Result<Unit> = withContext(Dispatchers.IO) {
+        val userId = auth.currentUser?.uid ?: return@withContext Result.failure(Exception("No hay usuario autenticado"))
+
+        // Ruta: users / uid / reminders
+        val userRemindersRef = firestore.collection("users").document(userId).collection("reminders")
+
         try {
-            // A. Subir los pendientes locales (los creados offline)
+            // A. Subir pendientes locales a Firestore
             val pendingReminders = dao.getPendingReminders()
             for (pending in pendingReminders) {
-                try {
-                    val remoteDto = apiService.createRemoteReminder(pending.toDto())
-                    // Si el servidor responde bien, lo actualizo a SYNCED
-                    val updatedEntity = pending.copy(
-                        id = remoteDto.id ?: pending.id,
+                val data = mapOf(
+                    "title" to pending.title,
+                    "description" to pending.description,
+                    "category" to pending.category,
+                    "priority" to pending.priority,
+                    "status" to pending.status,
+                    "date" to pending.date
+                )
+                // Usa el ID de Room como ID del documento en Firestore para evitar duplicados
+                userRemindersRef.document(pending.id.toString()).set(data).await()
+
+                // Una vez subido, lo marca como SYNCED
+                dao.updateReminder(pending.copy(syncStatus = SyncStatus.SYNCED.name))
+            }
+
+            // B. Descargar datos remotos y actualizar Room
+            val snapshot = userRemindersRef.get().await()
+            for (doc in snapshot.documents) {
+                val id = doc.id.toIntOrNull() ?: 0
+                if (id > 0) {
+                    val entity = ReminderEntity(
+                        id = id,
+                        title = doc.getString("title") ?: "",
+                        description = doc.getString("description") ?: "",
+                        category = doc.getString("category") ?: "HOGAR",
+                        priority = doc.getString("priority") ?: "MEDIA",
+                        status = doc.getString("status") ?: "PENDIENTE",
+                        date = doc.getLong("date") ?: System.currentTimeMillis(),
                         syncStatus = SyncStatus.SYNCED.name
                     )
-                    dao.updateReminder(updatedEntity)
-                } catch (e: Exception) {
-                    Log.e("Sync", "Error subiendo pendiente", e)
+                    // Inserta con REPLACE para no duplicar
+                    dao.insertReminder(entity)
                 }
             }
 
-            // B. Descargar los remotos y actualizar Room (evitando duplicados)
-            val remoteDtos = apiService.getRemoteReminders()
-            // Tomo solo los primeros 5 de la API de prueba para no llenar la base de basura
-            remoteDtos.take(5).forEach { dto ->
-                val entity = dto.toEntity()
-                // Inserto con REPLACE. Si el ID ya existe, lo actualiza. No duplica.
-                dao.insertReminder(entity)
-            }
-
             Result.success(Unit)
-        } catch (e: IOException) {
-            // Error de red (sin internet)
-            Log.e("Sync", "Sin conexión a internet", e)
-            Result.failure(e)
         } catch (e: Exception) {
-            // Error del servidor
-            Log.e("Sync", "Error en el servidor", e)
+            Log.e("Sync", "Error en Firebase", e)
             Result.failure(e)
         }
+    }
+
+    override suspend fun clearLocalData() = withContext(Dispatchers.IO) {
+        dao.clearAllReminders()
     }
 }

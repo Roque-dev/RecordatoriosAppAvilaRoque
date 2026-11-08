@@ -32,4 +32,8 @@ interface ReminderDao {
     // Consulta para obtener pendientes de sincronizar
     @Query("SELECT * FROM reminders WHERE syncStatus = 'PENDING'")
     suspend fun getPendingReminders(): List<ReminderEntity>
+
+    // Para borrar todo cuando se cierra sesión
+    @Query("DELETE FROM reminders")
+    suspend fun clearAllReminders()
 }

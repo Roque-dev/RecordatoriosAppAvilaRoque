@@ -2,10 +2,27 @@ package com.example.recordatoriosappavilaroque.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val Purple80 = Color(0xFFD0BCFF)
-val PurpleGrey80 = Color(0xFFCCC2DC)
-val Pink80 = Color(0xFFEFB8C8)
+// Paleta de colores estilo "Azul Profesional"
+val Primary = Color(0xFF0061A4)
+val OnPrimary = Color(0xFFFFFFFF)
+val PrimaryContainer = Color(0xFFD1E4FF)
+val OnPrimaryContainer = Color(0xFF001D36)
 
-val Purple40 = Color(0xFF6650a4)
-val PurpleGrey40 = Color(0xFF625b71)
-val Pink40 = Color(0xFF7D5260)
+val Secondary = Color(0xFF535F70)
+val OnSecondary = Color(0xFFFFFFFF)
+
+val Tertiary = Color(0xFF6B5778)
+val OnTertiary = Color(0xFFFFFFFF)
+
+val Background = Color(0xFFF8F9FF)
+val OnBackground = Color(0xFF191C20)
+
+val Surface = Color(0xFFF8F9FF)
+val OnSurface = Color(0xFF191C20)
+val SurfaceVariant = Color(0xFFF0F4F8)
+
+// Colores para el modo oscuro (opcional, pero buena práctica)
+val DarkPrimary = Color(0xFF9ECAFF)
+val DarkOnPrimary = Color(0xFF003258)
+val DarkBackground = Color(0xFF191C20)
+val DarkOnBackground = Color(0xFFE2E2E9)
